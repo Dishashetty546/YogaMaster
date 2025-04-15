@@ -3,6 +3,7 @@ const app = express();
 require("dotenv").config();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.PAYMENT_SECRET);
 const { ObjectId } = require("mongodb");
 
 // Middleware
@@ -144,6 +145,100 @@ async function run() {
         options
       );
       res.send(result);
+    });
+
+    //cart routes
+    app.post("/add-to-cart", async (req, res) => {
+      const newCartItem = req.body;
+      const result = await cartCollection.insertOne(newCartItem);
+      res.send(result);
+    });
+    //get cart item by its ID
+    app.get("/cart-item/:id", async (req, res) => {
+      const id = req.params.id;
+      const email = req.body.email;
+      const query = {
+        classId: id,
+        userMail: email,
+      };
+      const projection = { classsId: 1 };
+      const result = await cartCollection.findOne(query, {
+        projection: projection,
+      });
+      res.send(result);
+    });
+
+    //cart info by user email
+    app.get("/cart/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { userMail: email };
+      const projection = { classId: 1 };
+      const carts = await cartCollection.find(query, {
+        projection: projection,
+      });
+      const classIds = carts.map((cart) => new ObjectId(cart.cartId));
+      const classes = { _id: { $in: classIds } };
+      const result = await classesCollection.find(query).toArray();
+      res.send(result);
+    });
+    //DELETE CART ITEM
+
+    app.delete("/delete-cart-item/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { classId: id };
+      const result = await cartCollection.deleteOne(query);
+      res.send(result);
+    });
+    //payment routes
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price) * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    //post payment info
+    app.post("/payment-info", async (req, res) => {
+      const paymentInfo = req.body;
+      const classesId = paymentInfo.userId;
+      const userEmail = paymentInfo.userEmail;
+      const signleclassId = req.query.classId;
+      let query;
+      if (signleclassId) {
+        query = { classId: signleclassId, userMail: userEmail };
+      } else {
+        query = { classId: { $in: classesId } };
+      }
+      const classesQuery = {
+        _id: { $in: classesId.map((id) => new ObjectId(id)) },
+      };
+      const classes = await classesCollection.find(classesQuery).toArray();
+      const newEnrolledData = {
+        userEmail: userEmail,
+        classId: signleclassId.map((id) => new ObjectId(id)),
+        transactionId: paymentInfo.transactionId,
+      };
+      const updatedDoc = {
+        $set: {
+          totalEnrolled:
+            classes.reduce(
+              (total, current) => total + current.totalEnrolled,
+              0
+            ) + 1 || 0,
+          availableSeats:
+            classes.reduce(
+              (total, current) => total + current.availableSeats,
+              0
+            ) - 1 || 0,
+        },
+      };
+      const updatedResult = await classesCollection.updateMany(classesQuery);
     });
 
     console.log("Connected to MongoDB!");
