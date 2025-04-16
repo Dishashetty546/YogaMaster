@@ -238,7 +238,22 @@ async function run() {
             ) - 1 || 0,
         },
       };
-      const updatedResult = await classesCollection.updateMany(classesQuery);
+      const updatedResult = await classesCollection.updateMany(
+        classesQuery,
+        updatedDoc,
+        { upsert: true }
+      );
+      const enrolledResult = await enrolledCollection.insertOne(
+        newEnrolledData
+      );
+      const deletedResults = await classesCollection.deleteMany(query);
+      const paymentResults = await paymentCollection.insertOne(paymentInfo);
+      res.send({
+        paymentResults,
+        deletedResults,
+        enrolledResult,
+        updatedResult,
+      });
     });
 
     console.log("Connected to MongoDB!");
