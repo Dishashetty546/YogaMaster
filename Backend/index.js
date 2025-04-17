@@ -255,6 +255,62 @@ async function run() {
         updatedResult,
       });
     });
+    //payment history
+
+    app.get("/payment-history/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { userEmail: email };
+      const result = await paymentCollection
+        .find(query)
+        .sort({ date: -1 })
+        .toArray();
+      res.send(result);
+    });
+    //payment history length
+    app.get("/payment-history-length/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { userEmail: email };
+      const total = await paymentCollection.countDocuments(query);
+      res.send({ total });
+    });
+    //enrollment routes
+    app.get("/popular_classes", async (req, res) => {
+      const result = await classesCollection
+        .find()
+        .sort({ totalEnrolled: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+
+    app.get("popular-instructors", async (req, res) => {
+      const pipeline = [
+        {
+          $group: {
+            _id: "$instructorEmail",
+            totalEnrolled: { $sum: "$totalEnrolled" },
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignFeild: "email",
+            as: "instructor",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            instructor: {
+              $arrayElemAt: ["$instructor", 0],
+            },
+          },
+        },
+      ];
+    });
+
+    app.get("/popular_classes", async (req, res) => {});
 
     console.log("Connected to MongoDB!");
   } catch (error) {
